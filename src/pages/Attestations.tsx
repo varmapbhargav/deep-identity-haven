@@ -10,41 +10,81 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { motion } from "framer-motion";
-import { FileCheck, Clock, Shield, Info } from "lucide-react";
-import { useState } from "react";
+import { FileCheck, Clock, Shield, Info, Plus } from "lucide-react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-
-interface Attestation {
-  id: string;
-  name: string;
-  issuer: string;
-  timestamp: string;
-  status: "pending" | "verified" | "rejected";
-}
+import { Attestation } from "@/types/attestation";
+import { getAttestations, createAttestation, verifyAttestation } from "@/lib/attestation";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const Attestations = () => {
   const { address } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [attestations] = useState<Attestation[]>([
-    {
-      id: "1",
-      name: "GitHub Contributor",
-      issuer: "GitHub Attestation Service",
-      timestamp: "2024-02-20",
-      status: "verified",
-    },
-    {
-      id: "2",
-      name: "Twitter Account Holder",
-      issuer: "Twitter Verification",
-      timestamp: "2024-02-19",
-      status: "pending",
-    },
-  ]);
+  const [attestations, setAttestations] = useState<Attestation[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newAttestationType, setNewAttestationType] = useState("github");
+  const [newAttestationName, setNewAttestationName] = useState("");
 
-  const handleRequestAttestation = () => {
-    toast.info("Attestation request feature coming soon!");
+  useEffect(() => {
+    if (address) {
+      loadAttestations();
+    }
+  }, [address]);
+
+  const loadAttestations = async () => {
+    if (!address) return;
+    try {
+      const data = await getAttestations(address);
+      setAttestations(data);
+    } catch (error) {
+      console.error('Failed to load attestations:', error);
+    }
+  };
+
+  const handleCreateAttestation = async () => {
+    if (!address) {
+      toast.error("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      await createAttestation({
+        type: newAttestationType as any,
+        name: newAttestationName,
+        recipient: address,
+      });
+      await loadAttestations();
+      setIsCreating(false);
+      setNewAttestationType("github");
+      setNewAttestationName("");
+    } catch (error) {
+      console.error('Failed to create attestation:', error);
+      setIsCreating(false);
+    }
+  };
+
+  const handleVerifyAttestation = async (id: string) => {
+    try {
+      await verifyAttestation(id);
+      await loadAttestations();
+    } catch (error) {
+      console.error('Failed to verify attestation:', error);
+    }
   };
 
   const filteredAttestations = attestations.filter(
@@ -81,13 +121,56 @@ const Attestations = () => {
               View and manage your attestations
             </p>
           </div>
-          <Button
-            onClick={handleRequestAttestation}
-            className="button-gradient"
-            disabled={!address}
-          >
-            Request New Attestation
-          </Button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                className="button-gradient"
+                disabled={!address}
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Request New Attestation
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Attestation</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <label>Type</label>
+                  <Select
+                    value={newAttestationType}
+                    onValueChange={setNewAttestationType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="github">GitHub</SelectItem>
+                      <SelectItem value="twitter">Twitter</SelectItem>
+                      <SelectItem value="discord">Discord</SelectItem>
+                      <SelectItem value="custom">Custom</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <label>Name</label>
+                  <Input
+                    value={newAttestationName}
+                    onChange={(e) => setNewAttestationName(e.target.value)}
+                    placeholder="Enter attestation name"
+                  />
+                </div>
+                <Button
+                  className="w-full button-gradient"
+                  onClick={handleCreateAttestation}
+                  disabled={isCreating || !newAttestationName}
+                >
+                  {isCreating ? "Creating..." : "Create Attestation"}
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <div className="grid gap-6">
@@ -101,9 +184,7 @@ const Attestations = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">
-                  {
-                    attestations.filter((a) => a.status === "verified").length
-                  }
+                  {attestations.filter((a) => a.status === "verified").length}
                 </p>
               </CardContent>
             </Card>
@@ -117,9 +198,7 @@ const Attestations = () => {
               </CardHeader>
               <CardContent>
                 <p className="text-2xl font-bold">
-                  {
-                    attestations.filter((a) => a.status === "pending").length
-                  }
+                  {attestations.filter((a) => a.status === "pending").length}
                 </p>
               </CardContent>
             </Card>
@@ -155,9 +234,11 @@ const Attestations = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Status</TableHead>
+                      <TableHead>Type</TableHead>
                       <TableHead>Name</TableHead>
                       <TableHead>Issuer</TableHead>
                       <TableHead>Date</TableHead>
+                      <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -167,17 +248,35 @@ const Attestations = () => {
                           <TableCell>
                             {getStatusIcon(attestation.status)}
                           </TableCell>
+                          <TableCell className="capitalize">
+                            {attestation.type}
+                          </TableCell>
                           <TableCell className="font-medium">
                             {attestation.name}
                           </TableCell>
-                          <TableCell>{attestation.issuer}</TableCell>
-                          <TableCell>{attestation.timestamp}</TableCell>
+                          <TableCell>
+                            {attestation.issuer.slice(0, 6)}...{attestation.issuer.slice(-4)}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(attestation.timestamp).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {attestation.status === 'pending' && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleVerifyAttestation(attestation.id)}
+                              >
+                                Verify
+                              </Button>
+                            )}
+                          </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
                         <TableCell
-                          colSpan={4}
+                          colSpan={6}
                           className="text-center text-gray-500"
                         >
                           No attestations found
