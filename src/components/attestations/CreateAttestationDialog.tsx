@@ -17,6 +17,7 @@ import {
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { CreateAttestationParams } from "@/types/attestation";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CreateAttestationDialogProps {
   onCreateAttestation: (params: CreateAttestationParams) => Promise<void>;
@@ -29,15 +30,19 @@ export const CreateAttestationDialog = ({
   isCreating,
   disabled
 }: CreateAttestationDialogProps) => {
+  const { address } = useAuth();
   const [type, setType] = useState("github");
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
 
   const handleCreate = async () => {
+    if (!address) return;
+    
     await onCreateAttestation({
       type: type as any,
       name,
-      metadata: { username }
+      metadata: { username },
+      recipient: address
     });
     setType("github");
     setName("");
@@ -49,7 +54,7 @@ export const CreateAttestationDialog = ({
       <DialogTrigger asChild>
         <Button
           className="button-gradient"
-          disabled={disabled}
+          disabled={disabled || !address}
         >
           <Plus className="w-4 h-4 mr-2" />
           Request New Attestation
@@ -98,7 +103,7 @@ export const CreateAttestationDialog = ({
           <Button
             className="w-full button-gradient"
             onClick={handleCreate}
-            disabled={isCreating || !name || (!username && type !== 'custom')}
+            disabled={isCreating || !name || (!username && type !== 'custom') || !address}
           >
             {isCreating ? "Creating..." : "Create Attestation"}
           </Button>
