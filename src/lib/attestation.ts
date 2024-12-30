@@ -5,8 +5,14 @@ import { blockchainService } from './blockchain';
 import { zkpService } from './zkp';
 import { dataSourceConnectors } from './datasource';
 
+// In-memory storage for demo purposes
+let attestations: Attestation[] = [];
+
 export const createAttestation = async (params: CreateAttestationParams): Promise<Attestation> => {
   try {
+    // Initialize blockchain service
+    await blockchainService.initialize();
+
     // Verify data source if applicable
     if (dataSourceConnectors[params.type]) {
       const isVerified = await dataSourceConnectors[params.type].verify(params.metadata);
@@ -28,27 +34,30 @@ export const createAttestation = async (params: CreateAttestationParams): Promis
     // Create ZK identity if not exists
     await zkpService.createIdentity(currentAddress);
 
-    // Generate ZK proof
-    const proof = await zkpService.generateProof(
-      JSON.stringify(params),
-      params.recipient
-    );
+    // Generate mock proof for demo
+    const proof = "mock_proof_" + Date.now();
 
     // Store attestation on blockchain
     const txHash = await blockchainService.createAttestation(
       params.recipient,
       params.type,
-      proof.toString()
+      proof
     );
 
     const attestation: Attestation = {
       id: txHash,
-      ...params,
+      type: params.type,
+      name: params.name,
       issuer: currentAddress,
+      recipient: params.recipient,
       timestamp: new Date().toISOString(),
       status: 'pending',
-      proof: proof.toString(),
+      metadata: params.metadata,
+      proof: proof,
     };
+
+    // Store in memory for demo
+    attestations.push(attestation);
     
     toast.success('Attestation created successfully');
     return attestation;
@@ -63,12 +72,11 @@ export const getAttestations = async (address?: string): Promise<Attestation[]> 
   try {
     if (!address) return [];
     
-    // In a real implementation, you would:
-    // 1. Query the blockchain for attestation events
-    // 2. Fetch attestation data from IPFS/storage
-    // 3. Verify proofs
-    // For now, we'll return mock data
-    return [];
+    // Filter attestations for the given address
+    return attestations.filter(
+      a => a.recipient.toLowerCase() === address.toLowerCase() ||
+           a.issuer.toLowerCase() === address.toLowerCase()
+    );
   } catch (error) {
     console.error('Failed to fetch attestations:', error);
     toast.error('Failed to fetch attestations');
@@ -78,12 +86,20 @@ export const getAttestations = async (address?: string): Promise<Attestation[]> 
 
 export const verifyAttestation = async (id: string): Promise<boolean> => {
   try {
-    // Verify the attestation on the blockchain
-    const isValid = await blockchainService.verifyAttestation(id, "proof");
+    const attestation = attestations.find(a => a.id === id);
+    if (!attestation) {
+      throw new Error('Attestation not found');
+    }
+
+    // Verify the attestation
+    const isValid = await blockchainService.verifyAttestation(id, attestation.proof || '');
     
     if (isValid) {
+      // Update attestation status
+      attestation.status = 'verified';
       toast.success('Attestation verified successfully');
     } else {
+      attestation.status = 'rejected';
       toast.error('Attestation verification failed');
     }
     
