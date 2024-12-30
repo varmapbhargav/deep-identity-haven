@@ -19,7 +19,14 @@ export const createAttestation = async (params: CreateAttestationParams): Promis
     const accounts = await window.ethereum?.request({
       method: 'eth_accounts'
     });
-    const currentAddress = accounts?.[0] || '';
+    const currentAddress = accounts?.[0];
+    
+    if (!currentAddress) {
+      throw new Error('No wallet connected');
+    }
+
+    // Create ZK identity if not exists
+    await zkpService.createIdentity(currentAddress);
 
     // Generate ZK proof
     const proof = await zkpService.generateProof(
@@ -46,6 +53,7 @@ export const createAttestation = async (params: CreateAttestationParams): Promis
     toast.success('Attestation created successfully');
     return attestation;
   } catch (error) {
+    console.error('Failed to create attestation:', error);
     toast.error('Failed to create attestation');
     throw error;
   }
@@ -62,6 +70,7 @@ export const getAttestations = async (address?: string): Promise<Attestation[]> 
     // For now, we'll return mock data
     return [];
   } catch (error) {
+    console.error('Failed to fetch attestations:', error);
     toast.error('Failed to fetch attestations');
     throw error;
   }
@@ -80,6 +89,7 @@ export const verifyAttestation = async (id: string): Promise<boolean> => {
     
     return isValid;
   } catch (error) {
+    console.error('Failed to verify attestation:', error);
     toast.error('Failed to verify attestation');
     throw error;
   }
