@@ -15,6 +15,12 @@ export const createAttestation = async (params: CreateAttestationParams): Promis
       }
     }
 
+    // Get current wallet address
+    const accounts = await window.ethereum?.request({
+      method: 'eth_accounts'
+    });
+    const currentAddress = accounts?.[0] || '';
+
     // Generate ZK proof
     const proof = await zkpService.generateProof(
       JSON.stringify(params),
@@ -31,7 +37,7 @@ export const createAttestation = async (params: CreateAttestationParams): Promis
     const attestation: Attestation = {
       id: txHash,
       ...params,
-      issuer: window.ethereum?.selectedAddress || '',
+      issuer: currentAddress,
       timestamp: new Date().toISOString(),
       status: 'pending',
       proof: proof.toString(),
